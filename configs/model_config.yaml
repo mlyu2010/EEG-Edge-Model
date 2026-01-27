@@ -1,0 +1,53 @@
+# Model Configuration File
+
+# TENN EEG Model Configuration
+tenn_eeg:
+  num_channels: 64
+  num_classes: 4
+  temporal_channels: [32, 64, 128]
+  state_dim: 64
+  dropout: 0.2
+
+# Vision Classifier Configuration
+vision_classifier:
+  num_classes: 1000
+  in_channels: 3
+  base_channels: 32
+
+# Segmentation Model Configuration
+segmentation:
+  num_classes: 21
+  in_channels: 3
+  base_channels: 64
+
+# Anomaly Detection Configuration
+anomaly_detection:
+  input_channels: 1
+  sequence_length: 256
+  latent_dim: 64
+  hidden_channels: [32, 64, 128]
+
+# Training Configuration
+training:
+  batch_size: 32
+  epochs: 100
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  early_stopping_patience: 10
+
+# Quantization Configuration
+quantization:
+  akida:
+    bitwidth: 8
+    calibration_samples: 100
+  onnx:
+    quantization_mode: "dynamic"
+
+# TVM Configuration
+tvm:
+  targets:
+    - "llvm"
+    - "llvm -mcpu=core-avx2"
+    - "llvm -mcpu=native"
+  opt_level: 3
+  tuning_trials: 1000
