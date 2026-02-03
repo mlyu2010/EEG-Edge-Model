@@ -188,13 +188,13 @@ async def predict_anomaly(request: PredictionRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/model/{model_name}/info", response_model=ModelInfo)
+@router.get("/model/{model_name:path}/info", response_model=ModelInfo)
 async def get_model_info(model_name: str):
     """
     Get information about a specific model.
 
     Args:
-        model_name: Name of the model
+        model_name: Name or path of the model
 
     Returns:
         Model information
@@ -202,56 +202,136 @@ async def get_model_info(model_name: str):
     # Placeholder - would query model registry
     models = await list_models()
 
+    # Try to match by name or basename
+    import os
+    base_name = os.path.basename(model_name).replace('.onnx', '').replace('.pt', '')
+
     for model in models:
-        if model.name == model_name:
+        if model.name == model_name or model.name == base_name:
             return model
 
     raise HTTPException(status_code=404, detail=f"Model {model_name} not found")
 
 
-@router.post("/model/{model_name}/quantize")
-async def quantize_model(model_name: str, target: str = "akida"):
+@router.post("/model/{model_name:path}/quantize")
+async def quantize_model(model_name: str, target: str = "onnx"):
     """
     Quantize a model for edge deployment.
 
     Args:
-        model_name: Name of the model to quantize
-        target: Target hardware (akida, tvm, onnx)
+        model_name: Name or path of the model to quantize
+        target: Target hardware (onnx, akida, tvm)
 
     Returns:
         Quantization status
     """
     try:
-        # Placeholder - actual implementation would perform quantization
-        return {
-            "status": "success",
-            "model_name": model_name,
-            "target": target,
-            "quantized_model_path": f"models/quantized/{model_name}_{target}.bin",
-            "compression_ratio": 4.0,
-            "message": "Model quantization completed"
-        }
+        import os
+        from pathlib import Path
 
+        # Extract just the model name from path if full path provided
+        base_name = os.path.basename(model_name)
+        model_name_clean = base_name.replace('.onnx', '').replace('.pt', '')
+
+        # Determine input model path
+        if model_name.startswith('models/'):
+            input_path = model_name
+        elif os.path.exists(f"models/exported/{base_name}"):
+            input_path = f"models/exported/{base_name}"
+        elif os.path.exists(f"models/trained/{base_name}"):
+            input_path = f"models/trained/{base_name}"
+        else:
+            # Try to find it
+            input_path = f"models/exported/{model_name_clean}.onnx"
+
+        # Output path
+        output_path = f"models/quantized/{model_name_clean}_{target}_quantized.onnx"
+
+        # Perform actual quantization based on target
+        if target == "onnx":
+            # Real ONNX quantization
+            from app.utils.model_export import quantize_onnx_model
+
+            if not os.path.exists(input_path):
+                raise HTTPException(status_code=404, detail=f"Model not found: {input_path}")
+
+            success = quantize_onnx_model(input_path, output_path, quantization_mode="dynamic")
+
+            if not success:
+                return {
+                    "status": "error",
+                    "message": "Quantization failed. Check logs for details.",
+                    "model_name": model_name_clean,
+                    "target": target
+                }
+
+            # Get file sizes for compression ratio
+            original_size = os.path.getsize(input_path) / (1024 * 1024)  # MB
+            quantized_size = os.path.getsize(output_path) / (1024 * 1024)  # MB
+            compression_ratio = original_size / quantized_size if quantized_size > 0 else 1.0
+
+            return {
+                "status": "success",
+                "model_name": model_name_clean,
+                "original_path": input_path,
+                "target": target,
+                "quantized_model_path": output_path,
+                "original_size_mb": round(original_size, 2),
+                "quantized_size_mb": round(quantized_size, 2),
+                "compression_ratio": round(compression_ratio, 2),
+                "message": "Model quantization completed successfully"
+            }
+
+        elif target == "akida":
+            # Akida quantization requires SDK
+            return {
+                "status": "not_implemented",
+                "message": "Akida quantization requires BrainChip Akida SDK. Please install the SDK and update app/utils/akida_quantization.py",
+                "model_name": model_name_clean,
+                "target": target,
+                "documentation": "See INSTALL_NOTES.md for Akida SDK setup"
+            }
+
+        elif target == "tvm":
+            # TVM quantization
+            return {
+                "status": "not_implemented",
+                "message": "TVM quantization is optional. Uncomment apache-tvm in requirements.txt and update app/utils/tvm_compiler.py",
+                "model_name": model_name_clean,
+                "target": target
+            }
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown target: {target}. Use 'onnx', 'akida', or 'tvm'")
+
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        raise HTTPException(status_code=500, detail=f"Quantization error: {str(e)}\n{traceback.format_exc()}")
 
 
-@router.get("/benchmark/{model_name}")
+@router.get("/benchmark/{model_name:path}")
 async def benchmark_model(model_name: str, iterations: int = 100):
     """
     Benchmark model performance.
 
     Args:
-        model_name: Name of the model
+        model_name: Name or path of the model
         iterations: Number of benchmark iterations
 
     Returns:
         Benchmark results
     """
     try:
+        # Extract just the model name from path if full path provided
+        import os
+        base_name = os.path.basename(model_name)
+        model_name_clean = base_name.replace('.onnx', '').replace('.pt', '')
+
         # Placeholder benchmark results
         return {
-            "model_name": model_name,
+            "model_name": model_name_clean,
+            "original_path": model_name,
             "iterations": iterations,
             "avg_inference_time_ms": 2.5,
             "throughput_samples_per_sec": 400,
