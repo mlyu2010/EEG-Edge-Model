@@ -141,35 +141,63 @@ curl -X POST "http://localhost:8000/api/v1/model/vision_classifier_v1/quantize?t
 ```
 
 #### GET `/api/v1/benchmark/{model_name}`
-Benchmark model performance.
+Benchmark model performance on different devices (CPU, CUDA, MPS).
 
 **Path Parameter:**
 - `model_name` - Model name or full path
 
 **Query Parameters:**
 - `iterations` - Number of iterations (default: 100)
+- `device` - Device to use: `cpu`, `cuda`, or `mps` (default: `cpu`)
 
 **Examples:**
 ```bash
-# Simple benchmark
-curl "http://localhost:8000/api/v1/benchmark/tenn_eeg_v1?iterations=100"
+# CPU benchmark
+curl "http://localhost:8000/api/v1/benchmark/tenn_eeg.onnx?device=cpu&iterations=100"
 
-# Benchmark with path
-curl "http://localhost:8000/api/v1/benchmark/models/trained/tenn_eeg_final.pt?iterations=1000"
+# CUDA GPU benchmark (if available)
+curl "http://localhost:8000/api/v1/benchmark/best_model.pt?device=cuda&iterations=1000"
+
+# Apple Silicon MPS benchmark (if available)
+curl "http://localhost:8000/api/v1/benchmark/tenn_eeg_final.pt?device=mps&iterations=100"
+
+# Compare different devices
+for device in cpu cuda mps; do
+  curl "http://localhost:8000/api/v1/benchmark/tenn_eeg.onnx?device=$device&iterations=100"
+done
 ```
 
-**Response:**
+**Response (Success):**
 ```json
 {
+  "status": "success",
+  "framework": "ONNX Runtime",
+  "avg_inference_time_ms": 6.149,
+  "throughput_samples_per_sec": 162.63,
+  "input_shape": [1, 64, 256],
+  "providers": ["CPUExecutionProvider"],
   "model_name": "tenn_eeg",
-  "original_path": "models/exported/tenn_eeg.onnx",
+  "model_path": "models/exported/tenn_eeg.onnx",
   "iterations": 100,
-  "avg_inference_time_ms": 2.5,
-  "throughput_samples_per_sec": 400,
-  "memory_usage_mb": 125,
   "device": "cpu"
 }
 ```
+
+**Response (Device Not Available):**
+```json
+{
+  "status": "error",
+  "message": "CUDA not available. Install PyTorch with CUDA support.",
+  "available_devices": ["cpu", "mps"]
+}
+```
+
+**Supported Devices:**
+- `cpu` - ✅ Always available
+- `cuda` - 🎮 Requires CUDA-enabled PyTorch and NVIDIA GPU
+- `mps` - 🍎 Requires macOS with Apple Silicon (M1/M2/M3)
+
+See `BENCHMARK_GUIDE.md` for detailed usage and performance comparison.
 
 ---
 
